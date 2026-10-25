@@ -36,7 +36,7 @@ From the slide, m = 8:
 |---|---|---|---|---|---|---|---|---|
 | pi(i) | 2 | 6 | 3 | 5 | 1 | 8 | 4 | 7 |
 
-Index 1 is the MSB. **[CONFIRM]** Direction: output bit `i` = input bit `pi(i)` (the textbook block-permutation cipher, `y_i = x_pi(i)`). The slide does not state it explicitly; the reverse reading (input bit `i` moves to position `pi(i)`) would give a different ciphertext. Check against the instructor or a classmate's output before step 4.
+Index 1 is the MSB. Direction (decided, not stated on the slide): output bit `i` = input bit `pi(i)` (the textbook block-permutation cipher, `y_i = x_pi(i)`). The reverse reading (input bit `i` moves to position `pi(i)`) would give a different ciphertext; if a reference output ever disagrees, flip the direction in `permutation.py` and update the vectors in §3.3.1.
 
 Decrypt uses the inverse: `PI_INV[pi(i)] = i`, computed at load time. The program verifies at import that `PI` is a permutation of 1..8.
 
@@ -195,11 +195,11 @@ Each step ends with passing tests and a commit.
 
 | Step | Deliverable | Needs | Done when |
 |------|-------------|-------|-----------|
-| 0 | Done: details taken from the Lab 1 handout and slide 19; confirm the Pi direction **[CONFIRM]** | – | Pi direction confirmed |
+| 0 | Done: details taken from the Lab 1 handout and slide 19; Pi direction decided (output bit i = input bit pi(i)) | – | – |
 | 1 | Project skeleton, `constants.py`, `errors.py`, test runner (`pytest` or `unittest`) | – | empty tests run |
 | 2 | `permutation.py` + tests | – | permutation tests pass |
 | 3 | `lfsr.py` + tests | – | LFSR matches §3.3.1 |
-| 4 | `cipher.py` + round-trip tests | Pi direction | `decrypt(encrypt(x)) == x` |
+| 4 | `cipher.py` + round-trip tests | – | `decrypt(encrypt(x)) == x` |
 | 5 | `validation.py` + tests | – | FR-5/6/7 tests pass |
 | 6 | `container.py` + tests | – | FR-9/10 tests pass |
 | 7 | `service.py` with atomic writes, progress callback | 4–6 | image round trips are byte-identical |

@@ -52,7 +52,7 @@ Out of scope: key management, network features, encrypting non-image data, crypt
 - **C-3** The UI MUST be Python with Tkinter, with encrypt/decrypt selection, input file, output file and a Start button (Lab 1 §1).
 - **C-4** Interoperability: the bit-ordering rules in spec §2 MUST be followed exactly.
 
-## 5. Resolved details and remaining question
+## 5. Resolved details
 The Lab 1 handout and slide 19 supply the algorithm details: Pi table, LFSR polynomial `1 + x^14 + x^17 + x^18 + x^19`, bit-ordering rules, XOR combination, and byte-wise operation. They are recorded in spec §2-3.
 
 | # | Item | Status |
@@ -63,7 +63,7 @@ The Lab 1 handout and slide 19 supply the algorithm details: Pi table, LFSR poly
 | Q4 | Output bit | Resolved: MSB shifted out; first output = MSB of seed |
 | Q5 | LFSR restart per file | Assumed yes (needed for decrypt) |
 | Q6 | Key | Fixed `0x67BD5` per the slide |
-| Q7 | Pi direction: output bit i = input bit pi(i), or input bit i goes to pi(i)? | **Open**: spec assumes the former; confirm before build step 4 |
+| Q7 | Pi direction: output bit i = input bit pi(i), or input bit i goes to pi(i)? | Decided: the former (output bit i = input bit pi(i)); flip if a reference output disagrees |
 
 ## 6. Acceptance criteria
 1. Encrypting a PNG, a JPG and a JPEG each produces an encrypted file; decrypting each gives back a file with the identical hash.
