@@ -16,3 +16,28 @@ Index 1 is the MSB. [CONFIRM] Direction: output bit i = input bit pi(i) (the tex
 Conclusion: We will kepp Reading A since it follows what is said in the notes.
 
 
+
+Now, the encrypted file we need to test against has an extension of enc, ours is ienc, why is that?
+
+.ienc was my own choice, not something from the lab. I picked it in the spec as a name tied to my IENC header marker,
+  and nothing in the handout or slides asks for it. I should have used the plain .enc the lab implies.
+
+  The extension is the smaller problem. My format wraps the ciphertext in an 18-byte header (marker, image type, length,
+  checksum). A reference .enc file is probably the raw permute-then-XOR output with no header.
+
+  - Our Decrypt would reject the reference file. It would say "Not an encrypted file made by this tool".
+  - Our Encrypt output wouldn't match the reference byte for byte. It would differ by the header, and the checksum field
+    depends on the plaintext.
+
+  I flagged the header risk when I finished the build, but I should have raised it earlier.
+
+  There are two ways to fix it:
+  1. Raw format, matching the lab (my recommendation). The file is just the ciphertext, saved as .enc. It would match
+     the reference exactly and decrypt the reference file. The cost is that Decrypt can no longer tell "not our file"
+     from "our file". A wrong or corrupt file would decrypt to garbage. We'd refuse it only if the result isn't a valid
+     PNG or JPEG, and the output extension (.png or .jpg) would come from the decrypted content instead of a header.
+  2. Keep the header and add a raw mode. More code and more UI, and I think the lab doesn't need it.
+
+  Which do you want? I'd go with option 1, rename the extension to .enc, and update the spec, tests and UI.
+
+  Conclusion: The encrypted extension is compliant to what the lab is asking for
