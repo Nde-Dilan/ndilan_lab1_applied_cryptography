@@ -1,30 +1,73 @@
-The algorithm to be builtis one that takes in plaintext ob bits, break that down into groups of 8 bits, then for each groupd of 8 bits(byte) apply permutation using the Pi function from the class.
+# Requirements: Image Encryption Tool
 
+This document says **what** the system must do. The **how** (algorithm, file format, architecture, build order) is in [spec.md](spec.md).
 
-The key(0x67BD5) is 1100111101111010101 in binary, the LFSR shifts every cycle to generate new pseudo-random bits. 
+Keywords: **MUST** = mandatory, **SHOULD** = desirable, **MAY** = optional.
+Each requirement has an ID so it can be traced to a spec section and a test.
 
+## 1. Scope
 
+A desktop application that (Lab 1 product cryptosystem) encrypts image files (PNG, JPG, JPEG) into an encrypted file, and decrypts those files back into the identical original image. Each byte is permuted, then XORed with a byte from an LFSR keystream (see spec).
 
-One bit from the permutted plain text will be taken, compose with the MSB of the version of the key obtained after LFSR has been applied, The operation will continue until the data is full crypted.
+Out of scope: key management, network features, encrypting non-image data, cryptographic strength beyond the class exercise.
 
+## 2. Functional requirements
 
----
-The system should allow users to select the action they want to perform
+### 2.1 Action selection
+- **FR-1** The UI MUST let the user choose between "Encrypt" and "Decrypt".
+- **FR-2** The UI MUST have a Start button; no processing begins until it is pressed.
+- **FR-3** The UI MUST let the user choose the input file and the output location/name.
+- **FR-4** Start MUST be disabled until an action and a valid input file are selected.
 
-The UI should allow the user to select “encrypt” or “decrypt”.
+### 2.2 Encryption
+- **FR-5** Encrypt MUST accept only PNG, JPG and JPEG images.
+- **FR-6** Encrypt MUST refuse any other file type, and MUST tell the user why.
+- **FR-7** File type MUST be validated by file content (magic bytes), not just by extension.
+- **FR-8** Every byte of the input MUST be permuted with the Pi function, then combined with the keystream (spec §3).
+- **FR-9** The output MUST be an encrypted file that records enough information to restore the original image (spec §5).
 
-The UI should have a start button to let the user choose when to start the chosen action.
+### 2.3 Decryption
+- **FR-10** Decrypt MUST accept only files produced by this tool, and MUST refuse anything else.
+- **FR-11** Decrypt MUST output an image in its original format (PNG, JPG or JPEG).
+- **FR-12** Decrypting an encrypted file MUST reproduce the original file byte-for-byte.
 
+### 2.4 Feedback
+- **FR-13** The UI MUST show a progress bar for both encryption and decryption.
+- **FR-14** The UI MUST show a clear message when an error occurs (unsupported type, unreadable file, corrupt or foreign encrypted file, write failure).
+- **FR-15** The UI MUST show a success message when an action finishes.
+- **FR-16** The UI MUST stay responsive during processing (work runs off the UI thread).
 
-The system should take in ONLY images(PNG,JPG,JPEG) and output an encrypted version for the ENCRYPION action.
+## 3. Non-functional requirements
+- **NFR-1** Correctness: for every supported image, `decrypt(encrypt(x)) == x`.
+- **NFR-2** Determinism: the same input and key MUST always give the same output.
+- **NFR-3** A failed or cancelled run MUST NOT leave a partial output file behind, and MUST NOT overwrite an existing file without confirmation.
+- **NFR-4** Files up to 50 MB SHOULD process in reasonable time (target under 30 s on a typical laptop).
+- **NFR-5** The crypto core MUST be independent of the UI so it can be tested without one.
+- **NFR-6** The project MUST have automated tests for the permutation, LFSR and round trip.
+- **NFR-7** Implementation language: Python 3 (the project lives in a Python projects folder). Dependencies SHOULD be limited to the standard library (Tkinter for the UI).
 
-The system should notify the user with a progress bar of the progression of the action[ENCRYPTION|DECRYPTION]
+## 4. Constraints
+- **C-1** Key: `0x67BD5` (19 bits, `1100111101111010101`), fixed in the program.
+- **C-2** The algorithm follows the Lab 1 definition: Pi permutation on each byte, then XOR with a byte from the LFSR (polynomial `1 + x^14 + x^17 + x^18 + x^19`).
+- **C-3** The UI MUST be Python with Tkinter, with encrypt/decrypt selection, input file, output file and a Start button (Lab 1 §1).
+- **C-4** Interoperability: the bit-ordering rules in spec §2 MUST be followed exactly.
 
-The system should let users know when an ERROR has occured
+## 5. Resolved details and remaining question
+The Lab 1 handout and slide 19 supply the algorithm details: Pi table, LFSR polynomial `1 + x^14 + x^17 + x^18 + x^19`, bit-ordering rules, XOR combination, and byte-wise operation. They are recorded in spec §2-3.
 
-The system shoul take in ONLY encrypted files and output ONLY images(PNG,JPG,JPEG) for the DECRYPTION action.
+| # | Item | Status |
+|---|------|--------|
+| Q1 | Pi table | Resolved: `2 6 3 5 1 8 4 7` |
+| Q2 | LFSR taps/direction | Resolved: taps at register bits 13, 16, 17, 18; feedback enters on the left |
+| Q3 | Combination operation | Resolved: XOR |
+| Q4 | Output bit | Resolved: MSB shifted out; first output = MSB of seed |
+| Q5 | LFSR restart per file | Assumed yes (needed for decrypt) |
+| Q6 | Key | Fixed `0x67BD5` per the slide |
+| Q7 | Pi direction: output bit i = input bit pi(i), or input bit i goes to pi(i)? | **Open**: spec assumes the former; confirm before build step 4 |
 
-The program should permute every byte(group of 8bits) of the plaintext input.
-
-
-The system should refuse any other type of documents for encryption.
+## 6. Acceptance criteria
+1. Encrypting a PNG, a JPG and a JPEG each produces an encrypted file; decrypting each gives back a file with the identical hash.
+2. Selecting a `.txt`, `.pdf`, or a `.png` that is really a text file is rejected with a message (FR-6, FR-7).
+3. Decrypting a plain image, a random file, or a truncated or modified encrypted file is rejected with a message (FR-10, FR-14).
+4. The progress bar goes from 0 to 100% during a run on a multi-MB image.
+5. All automated tests pass.
