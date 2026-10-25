@@ -11,6 +11,11 @@ One bit from the permutted plain text will be taken, compose with the MSB of the
 ---
 The system should allow users to select the action they want to perform
 
+The UI should allow the user to select “encrypt” or “decrypt”.
+
+The UI should have a start button to let the user choose when to start the chosen action.
+
+
 The system should take in ONLY images(PNG,JPG,JPEG) and output an encrypted version for the ENCRYPION action.
 
 The system should notify the user with a progress bar of the progression of the action[ENCRYPTION|DECRYPTION]
