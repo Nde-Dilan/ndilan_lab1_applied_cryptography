@@ -6,7 +6,7 @@ Product cryptosystem: each byte is permuted with the Lab 1 Pi table, then XORed 
 ```
 python main.py
 ```
-Pick Encrypt or Decrypt, choose the input and output files, press Start. Encrypt accepts only PNG/JPG/JPEG; Decrypt accepts only `.ienc` files made by this tool. Python 3 standard library only (Tkinter).
+Pick Encrypt or Decrypt, choose the input and output files, press Start. Encrypt accepts only PNG/JPG/JPEG. Encrypted files are the raw cipher output (extension `.enc`, same size as the input, no header). Decrypt refuses any file that does not decrypt to a PNG or JPEG. Python 3 standard library only (Tkinter).
 
 ## Test
 ```

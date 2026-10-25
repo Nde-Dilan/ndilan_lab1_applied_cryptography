@@ -6,11 +6,11 @@ This document says **how** the system works. The **what** is in [requirements.md
 ## 1. Overview
 
 ```
- input image -> validate -> read bytes -> per byte: Pi permute -> XOR with LFSR byte -> write container
+ input image -> validate -> read bytes -> per byte: Pi permute -> XOR with LFSR byte -> write raw ciphertext
                                                                   (LFSR seed 0x67BD5)
 ```
 
-Decryption is the reverse: read container, XOR with the same LFSR byte stream, apply inverse Pi, write original bytes. The system is the "simple product cryptosystem" from the slide: a block permutation cipher (m = 8) followed by an XOR with an LFSR keystream.
+Decryption is the reverse: read the file, XOR with the same LFSR byte stream, apply inverse Pi, check the result is a PNG/JPEG, write original bytes. The system is the "simple product cryptosystem" from the slide: a block permutation cipher (m = 8) followed by an XOR with an LFSR keystream.
 
 ## 2. Bit-numbering conventions (Lab 1 §1.b)
 
@@ -112,26 +112,19 @@ Supported inputs for Encrypt, by magic bytes:
 Rules:
 - Extension must be `.png`, `.jpg` or `.jpeg` (case-insensitive) **and** the magic bytes must match. Either failing means refuse.
 - Empty files are refused.
-- For Decrypt, the container magic and header checks in §5 must pass.
+- For Decrypt, the decrypted result must pass the signature check (§5).
 
-## 5. Encrypted container format (FR-9, FR-10, FR-11)
+## 5. Encrypted file format (FR-9, FR-10, FR-11)
 
-Needed so Decrypt can tell our files from others and restore the original format. Little-endian integers.
+The encrypted file is the **raw cipher output**: exactly one ciphertext byte per input byte, no header, no padding. This is the Lab 1 format, so our output is byte-identical to any other correct implementation and we can decrypt a reference `.enc` file.
 
-| Offset | Size | Field | Notes |
-|--------|------|-------|-------|
-| 0 | 4 | magic | ASCII `IENC` |
-| 4 | 1 | version | `1` |
-| 5 | 1 | original type | `1` = PNG, `2` = JPEG |
-| 6 | 8 | payload length | number of encrypted bytes |
-| 14 | 4 | CRC32 of the **original** plaintext | detects corruption / wrong key after decrypt |
-| 18 | N | payload | encrypted bytes |
+Consequences:
+- Output size equals input size.
+- The original image type is not stored. Decrypt recovers it from the decrypted bytes (PNG or JPEG signature, §4) and suggests `.png` or `.jpg` accordingly.
+- Decrypt cannot tell a foreign file from one of ours before decrypting. It decrypts in memory, then accepts the result only if it begins with a PNG or JPEG signature (the same check as §4). Anything else raises `NotEncryptedFile`, and no output file is written (NFR-3). A plain image, a text file, or random bytes fed to Decrypt all fail this check (a random file passes with probability about 2^-24 or less).
+- Corruption after the first few bytes is not detected (there is no checksum); only damage to the first 3-8 bytes shows up as a rejection.
 
-Decrypt checks: magic matches, version known, type known, file size = 18 + payload length, and after decryption the CRC32 matches and the magic bytes of the result match the recorded type. Any failure raises an error and no output file is kept (NFR-3).
-
-The header is stored unencrypted; it reveals only the image type and size.
-
-The default output name: Encrypt → `<name>.ienc`; Decrypt → `<name>.png` or `<name>.jpg` based on the recorded type.
+Default names: Encrypt -> `<name>.enc`; Decrypt -> `<name>.png` or `<name>.jpg` by detected type.
 
 ## 6. Architecture
 
@@ -144,7 +137,6 @@ ndilan_hw1/
     lfsr.py          # Lfsr class
     cipher.py        # encrypt_bytes / decrypt_bytes (with progress callback)
     validation.py    # type detection, file checks
-    container.py     # pack / unpack header
     service.py       # encrypt_file / decrypt_file: ties it all together, atomic writes
     errors.py        # ImageCryptError and subclasses
   ui/
@@ -154,7 +146,6 @@ ndilan_hw1/
     test_lfsr.py
     test_cipher.py
     test_validation.py
-    test_container.py
     test_service.py
   main.py            # starts the UI
 ```
@@ -168,7 +159,7 @@ def decrypt_file(src: Path, dst: Path, progress: Callable[[float], None] | None 
 ```
 - `progress` receives a value 0.0–1.0, called at least every 1% of data (or every 64 KB, whichever is larger).
 - Both write to a temp file in the destination folder, then rename on success; delete the temp file on any failure (NFR-3).
-- Errors are raised as `ImageCryptError` subclasses: `UnsupportedFileType`, `InvalidContainer`, `IntegrityError`, `IoError`. Messages are user-readable.
+- Errors are raised as `ImageCryptError` subclasses: `UnsupportedFileType`, `NotEncryptedFile`, `IoError`. Messages are user-readable.
 
 ### 6.2 UI behaviour (FR-1 to FR-4, FR-13 to FR-16)
 - Radio buttons: Encrypt / Decrypt.
@@ -186,8 +177,7 @@ def decrypt_file(src: Path, dst: Path, progress: Callable[[float], None] | None 
 | LFSR | first 8 bytes match §3.3.1; state after 64 clocks is `0x2E522`; state returns to the seed after 524,287 clocks |
 | Cipher | round trip on empty, 1 byte, random 1 MB; ciphertext vector from §3.3.1 |
 | Validation | accepts real PNG/JPG; rejects `.txt`, `.pdf`, a text file renamed `.png`, empty file |
-| Container | pack/unpack round trip; rejects bad magic, bad version, truncated, wrong length |
-| Service | image round trip gives identical SHA-256; tampered file → `IntegrityError`; failure leaves no output file; progress reaches 1.0 |
+| Service | image round trip gives identical SHA-256; encrypted file equals the raw cipher output with the same length as the input; a plain image, text or random file given to Decrypt → `NotEncryptedFile`; failure leaves no output file; progress reaches 1.0 |
 
 ## 8. Build plan (step by step)
 
@@ -201,14 +191,37 @@ Each step ends with passing tests and a commit.
 | 3 | `lfsr.py` + tests | – | LFSR matches §3.3.1 |
 | 4 | `cipher.py` + round-trip tests | – | `decrypt(encrypt(x)) == x` |
 | 5 | `validation.py` + tests | – | FR-5/6/7 tests pass |
-| 6 | `container.py` + tests | – | FR-9/10 tests pass |
-| 7 | `service.py` with atomic writes, progress callback | 4–6 | image round trips are byte-identical |
-| 8 | Performance pass (lookup tables, chunked keystream) | 7 | 50 MB under target, same vectors still pass |
-| 9 | Tkinter UI wired to the service | 7 | manual run covers acceptance criteria 1–4 |
-| 10 | End-to-end check against all acceptance criteria; README with run instructions | all | requirements §6 all pass |
+| 6 | `service.py` with atomic writes, progress callback | 4–5 | image round trips are byte-identical |
+| 7 | Performance pass (lookup tables, chunked keystream) | 6 | 50 MB under target, same vectors still pass |
+| 8 | Tkinter UI wired to the service | 6 | manual run covers acceptance criteria 1–4 |
+| 9 | End-to-end check against all acceptance criteria; README with run instructions | all | requirements §6 all pass |
 
 ## 9. Known limitations
 - Same key and same keystream for every file: two files encrypted with this tool leak the XOR of their (permuted) contents. Acceptable for the class exercise; a real system would use a per-file random IV/nonce.
 - The 19-bit LFSR period is 524,287 bits; since 8 and 524,287 are coprime, the byte keystream repeats only after 524,287 bytes (~512 KB). Larger images reuse the pad.
 - A linear LFSR keystream is breakable from a small amount of known plaintext (image headers are predictable).
-- The CRC32 detects accidental corruption only, not deliberate tampering.
+- The raw format has no integrity check: corruption or tampering of the encrypted file is not detected, except damage near the start that breaks the image signature.
+
+
+Now, the encrypted file we need to test against has an extension of enc, ours is ienc, why is that?
+
+.ienc was my own choice, not something from the lab. I picked it in the spec as a name tied to my IENC header marker,
+  and nothing in the handout or slides asks for it. I should have used the plain .enc the lab implies.
+
+  The extension is the smaller problem. My format wraps the ciphertext in an 18-byte header (marker, image type, length,
+  checksum). A reference .enc file is probably the raw permute-then-XOR output with no header.
+
+  - Our Decrypt would reject the reference file. It would say "Not an encrypted file made by this tool".
+  - Our Encrypt output wouldn't match the reference byte for byte. It would differ by the header, and the checksum field
+    depends on the plaintext.
+
+  I flagged the header risk when I finished the build, but I should have raised it earlier.
+
+  There are two ways to fix it:
+  1. Raw format, matching the lab (my recommendation). The file is just the ciphertext, saved as .enc. It would match
+     the reference exactly and decrypt the reference file. The cost is that Decrypt can no longer tell "not our file"
+     from "our file". A wrong or corrupt file would decrypt to garbage. We'd refuse it only if the result isn't a valid
+     PNG or JPEG, and the output extension (.png or .jpg) would come from the decrypted content instead of a header.
+  2. Keep the header and add a raw mode. More code and more UI, and I think the lab doesn't need it.
+
+  Which do you want? I'd go with option 1, rename the extension to .enc, and update the spec, tests and UI.

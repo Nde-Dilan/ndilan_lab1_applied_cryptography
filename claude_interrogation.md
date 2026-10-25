@@ -14,3 +14,5 @@ Index 1 is the MSB. [CONFIRM] Direction: output bit i = input bit pi(i) (the tex
   - Reading B: input bit i moves to output position π(i). For example, input bit 1 (the MSB) goes to position 2.
 
 Conclusion: We will kepp Reading A since it follows what is said in the notes.
+
+

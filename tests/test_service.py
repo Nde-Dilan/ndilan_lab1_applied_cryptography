@@ -1,16 +1,12 @@
 import hashlib
 import os
-import struct
 import tempfile
 import unittest
-import zlib
 from pathlib import Path
 
-from imgcrypt import container, service
+from imgcrypt import cipher, service
 from imgcrypt.constants import TYPE_JPEG, TYPE_PNG
-from imgcrypt.errors import (
-    IntegrityError, InvalidContainer, IoError, UnsupportedFileType,
-)
+from imgcrypt.errors import IoError, NotEncryptedFile, UnsupportedFileType
 from imgcrypt.validation import PNG_SIGNATURE, detect_type, validate_image
 
 
@@ -46,22 +42,6 @@ class ValidationTests(unittest.TestCase):
                 validate_image(name, data)
 
 
-class ContainerTests(unittest.TestCase):
-    def test_round_trip(self):
-        blob = container.pack(TYPE_PNG, 1234, b"payload")
-        self.assertEqual(container.unpack(blob), (TYPE_PNG, 1234, b"payload"))
-        self.assertEqual(container.peek_type(blob[:18]), TYPE_PNG)
-
-    def test_rejects(self):
-        good = container.pack(TYPE_PNG, 1, b"abc")
-        bad = [b"", good[:10], b"XXXX" + good[4:], good[:4] + b"\x09" + good[5:],
-               good[:5] + b"\x07" + good[6:], good[:-1], good + b"x"]
-        for blob in bad:
-            with self.assertRaises(InvalidContainer):
-                container.unpack(blob)
-        self.assertIsNone(container.peek_type(b"nope"))
-
-
 class ServiceTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -73,10 +53,12 @@ class ServiceTests(unittest.TestCase):
     def roundtrip(self, name, data):
         src = self.d / name
         src.write_bytes(data)
-        enc = self.d / (name + ".ienc")
+        enc = self.d / (name + ".enc")
         out = self.d / ("out_" + name)
         service.encrypt_file(src, enc)
-        self.assertNotEqual(enc.read_bytes()[18:], data)
+        self.assertEqual(enc.read_bytes(), cipher.encrypt_bytes(data))  # raw, no header
+        self.assertEqual(len(enc.read_bytes()), len(data))
+        self.assertNotEqual(enc.read_bytes(), data)
         service.decrypt_file(enc, out)
         self.assertEqual(sha(out), sha(src))
 
@@ -90,29 +72,29 @@ class ServiceTests(unittest.TestCase):
         for name, data in [("a.txt", b"hello"), ("fake.png", b"text in disguise")]:
             src = self.d / name
             src.write_bytes(data)
-            dst = self.d / "o.ienc"
+            dst = self.d / "o.enc"
             with self.assertRaises(UnsupportedFileType):
                 service.encrypt_file(src, dst)
             self.assertFalse(dst.exists())
 
     def test_decrypt_rejects_foreign_files(self):
-        for data in (fake_png(), os.urandom(500), b""):
-            src = self.d / "x.ienc"
+        for data in (fake_png(), fake_jpeg(), os.urandom(500), b"", b"plain text file"):
+            src = self.d / "x.enc"
             src.write_bytes(data)
-            with self.assertRaises(InvalidContainer):
+            with self.assertRaises(NotEncryptedFile):
                 service.decrypt_file(src, self.d / "o.png")
             self.assertFalse((self.d / "o.png").exists())
 
-    def test_tampered_payload(self):
+    def test_corrupted_first_bytes_rejected(self):
         src = self.d / "a.png"
         src.write_bytes(fake_png(1000))
-        enc = self.d / "a.ienc"
+        enc = self.d / "a.enc"
         service.encrypt_file(src, enc)
         blob = bytearray(enc.read_bytes())
-        blob[100] ^= 0xFF
+        blob[0] ^= 0xFF
         enc.write_bytes(bytes(blob))
         out = self.d / "o.png"
-        with self.assertRaises(IntegrityError):
+        with self.assertRaises(NotEncryptedFile):
             service.decrypt_file(enc, out)
         self.assertFalse(out.exists())
         self.assertEqual([p.name for p in self.d.iterdir() if p.suffix == ".tmp"], [])
@@ -120,7 +102,7 @@ class ServiceTests(unittest.TestCase):
     def test_no_overwrite_by_default(self):
         src = self.d / "a.png"
         src.write_bytes(fake_png(100))
-        dst = self.d / "a.ienc"
+        dst = self.d / "a.enc"
         dst.write_bytes(b"precious")
         with self.assertRaises(IoError):
             service.encrypt_file(src, dst)
@@ -130,28 +112,29 @@ class ServiceTests(unittest.TestCase):
 
     def test_missing_input_and_bad_destination(self):
         with self.assertRaises(IoError):
-            service.encrypt_file(self.d / "missing.png", self.d / "o.ienc")
+            service.encrypt_file(self.d / "missing.png", self.d / "o.enc")
         src = self.d / "a.png"
         src.write_bytes(fake_png(100))
         with self.assertRaises(IoError):
-            service.encrypt_file(src, self.d / "no_such_dir" / "o.ienc")
+            service.encrypt_file(src, self.d / "no_such_dir" / "o.enc")
 
     def test_progress_reaches_one(self):
         src = self.d / "a.png"
         src.write_bytes(fake_png(300_000))
         seen = []
-        service.encrypt_file(src, self.d / "a.ienc", seen.append)
+        service.encrypt_file(src, self.d / "a.enc", seen.append)
         self.assertEqual(seen[-1], 1.0)
         self.assertGreater(len(seen), 2)
 
     def test_names_and_peek(self):
         src = self.d / "a.png"
         src.write_bytes(fake_png(100))
-        enc = self.d / "a.ienc"
+        enc = self.d / "a.enc"
         service.encrypt_file(src, enc)
         self.assertEqual(service.peek_image_type(enc), TYPE_PNG)
         self.assertIsNone(service.peek_image_type(src))
-        self.assertTrue(service.suggest_encrypted_name(src).endswith("a.ienc"))
+        self.assertIsNone(service.peek_image_type(self.d / "missing"))
+        self.assertTrue(service.suggest_encrypted_name(src).endswith("a.enc"))
         self.assertTrue(service.suggest_decrypted_name(enc, TYPE_JPEG).endswith("a.jpg"))
 
 

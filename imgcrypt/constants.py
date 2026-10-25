@@ -12,9 +12,7 @@ LFSR_PERIOD = (1 << LFSR_WIDTH) - 1
 # Block permutation, m = 8, 1-based, index 1 is the MSB of the byte.
 PI = (2, 6, 3, 5, 1, 8, 4, 7)
 
-# Container format (spec section 5).
-MAGIC = b"IENC"
-VERSION = 1
+# Image types and the encrypted file extension (spec sections 4-5).
 TYPE_PNG = 1
 TYPE_JPEG = 2
-ENCRYPTED_EXTENSION = ".ienc"
+ENCRYPTED_EXTENSION = ".enc"

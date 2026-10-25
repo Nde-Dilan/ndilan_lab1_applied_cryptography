@@ -24,11 +24,11 @@ Out of scope: key management, network features, encrypting non-image data, crypt
 - **FR-6** Encrypt MUST refuse any other file type, and MUST tell the user why.
 - **FR-7** File type MUST be validated by file content (magic bytes), not just by extension.
 - **FR-8** Every byte of the input MUST be permuted with the Pi function, then combined with the keystream (spec §3).
-- **FR-9** The output MUST be an encrypted file that records enough information to restore the original image (spec §5).
+- **FR-9** The output MUST be the raw cipher output with the extension `.enc`: no header, same length as the input, byte-identical to other correct Lab 1 implementations (spec §5).
 
 ### 2.3 Decryption
-- **FR-10** Decrypt MUST accept only files produced by this tool, and MUST refuse anything else.
-- **FR-11** Decrypt MUST output an image in its original format (PNG, JPG or JPEG).
+- **FR-10** Decrypt MUST refuse any file that does not decrypt to a PNG or JPEG image, and MUST tell the user why.
+- **FR-11** Decrypt MUST output an image in its original format (PNG, JPG or JPEG), detected from the decrypted content.
 - **FR-12** Decrypting an encrypted file MUST reproduce the original file byte-for-byte.
 
 ### 2.4 Feedback
@@ -68,6 +68,7 @@ The Lab 1 handout and slide 19 supply the algorithm details: Pi table, LFSR poly
 ## 6. Acceptance criteria
 1. Encrypting a PNG, a JPG and a JPEG each produces an encrypted file; decrypting each gives back a file with the identical hash.
 2. Selecting a `.txt`, `.pdf`, or a `.png` that is really a text file is rejected with a message (FR-6, FR-7).
-3. Decrypting a plain image, a random file, or a truncated or modified encrypted file is rejected with a message (FR-10, FR-14).
-4. The progress bar goes from 0 to 100% during a run on a multi-MB image.
-5. All automated tests pass.
+3. Decrypting a plain image, a text file, or random bytes is rejected with a message (FR-10, FR-14).
+4. A reference `.enc` file from another correct implementation decrypts to the original image, and encrypting the same image gives that file byte for byte (FR-9).
+5. The progress bar goes from 0 to 100% during a run on a multi-MB image.
+6. All automated tests pass.

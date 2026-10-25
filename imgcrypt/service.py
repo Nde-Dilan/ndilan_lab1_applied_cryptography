@@ -1,14 +1,15 @@
-"""High-level encrypt/decrypt of files, with validation and atomic writes."""
+"""High-level encrypt/decrypt of files, with validation and atomic writes.
+
+The encrypted file is the raw cipher output (no header), as in Lab 1.
+"""
 
 import os
 import tempfile
-import zlib
 from pathlib import Path
 
-from . import container
 from .cipher import decrypt_bytes, encrypt_bytes
 from .constants import ENCRYPTED_EXTENSION, TYPE_JPEG, TYPE_PNG
-from .errors import IntegrityError, IoError
+from .errors import NotEncryptedFile, IoError
 from .validation import detect_type, read_file, validate_image
 
 _TYPE_EXTENSIONS = {TYPE_PNG: ".png", TYPE_JPEG: ".jpg"}
@@ -19,18 +20,19 @@ def suggest_encrypted_name(src):
 
 
 def suggest_decrypted_name(src, image_type=None):
-    """Output name for a decrypted file; reads the header to pick the extension."""
+    """Output name for a decrypted file; image_type picks the extension."""
     ext = _TYPE_EXTENSIONS.get(image_type, ".png")
     return str(Path(src).with_suffix(ext))
 
 
 def peek_image_type(src):
-    """Image type recorded in an encrypted file's header, or None if invalid."""
+    """Image type of an encrypted file (from its first decrypted bytes), or None."""
     try:
         with open(src, "rb") as f:
-            return container.peek_type(f.read(container.HEADER_SIZE))
+            head = f.read(8)
     except OSError:
         return None
+    return detect_type(decrypt_bytes(head))
 
 
 def _write_atomic(dst, data, overwrite):
@@ -53,16 +55,15 @@ def _write_atomic(dst, data, overwrite):
 
 def encrypt_file(src, dst, progress=None, overwrite=False):
     data = read_file(src)
-    image_type = validate_image(src, data)
-    payload = encrypt_bytes(data, progress)
-    blob = container.pack(image_type, zlib.crc32(data), payload)
-    _write_atomic(dst, blob, overwrite)
+    validate_image(src, data)
+    _write_atomic(dst, encrypt_bytes(data, progress), overwrite)
 
 
 def decrypt_file(src, dst, progress=None, overwrite=False):
     blob = read_file(src)
-    image_type, crc, payload = container.unpack(blob)
-    data = decrypt_bytes(payload, progress)
-    if zlib.crc32(data) != crc or detect_type(data) != image_type:
-        raise IntegrityError("Decryption failed: the encrypted file is corrupted.")
+    data = decrypt_bytes(blob, progress)
+    if detect_type(data) is None:
+        raise NotEncryptedFile(
+            "This is not a file encrypted by this tool: decrypting it does not "
+            "give a PNG or JPEG image.")
     _write_atomic(dst, data, overwrite)
