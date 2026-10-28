@@ -41,3 +41,24 @@ Now, the encrypted file we need to test against has an extension of enc, ours is
   Which do you want? I'd go with option 1, rename the extension to .enc, and update the spec, tests and UI.
 
   Conclusion: The encrypted extension is compliant to what the lab is asking for
+
+ UI redesign (`ui/app.py`)
+Request: make the next action obvious and tell the user what is happening at every stage. I rewrote the front end as a four-step flow:
+- **Layout:** Step 1 Choose action, Step 2 Select file, Step 3 Choose output location, Step 4 Encrypt/Decrypt, each with a bold label and consistent spacing.
+- **File selection:** one large clickable area plus a "Browse files…" button, showing the selected filename.
+- **Output name:** suggested automatically (e.g. `a.png` -> `a.enc`) and editable. I kept the Lab 1 `.enc` extension instead of the `.encrypted` example in the request.
+- **Status line:** colored, with explicit states: "Ready to encrypt", "Encrypting… 45%", "Encryption complete. Saved to …", and actionable errors. While inputs are incomplete it says what to do next.
+- **Primary button:** large, labelled "Encrypt file" / "Decrypt file", and disabled until the input file exists, the output folder exists, and input and output differ.
+- Changing the action, input or output clears the previous result and resets the progress bar. The overwrite confirmation dialog stays.
+- A headless smoke test of the encrypt flow and the action switch passed. The existing tests were not run (pytest is not installed).
+
+How the cipher works (checked against `imgcrypt/lfsr.py`, `cipher.py`, `permutation.py`)
+My understanding was mostly right, with two corrections:
+- The LFSR is **19 bits**, not 20. Key `0x67BD5`, p(x) = 1 + x^14 + x^17 + x^18 + x^19, feedback = XOR of register bits 13, 16, 17, 18 (0-based). Period is 2^19 - 1.
+- The permutation works **per byte** (m = 8) and nothing moves between bytes. Output bit i = input bit pi(i), counting from the MSB, with pi = (2, 6, 3, 5, 1, 8, 4, 7).
+
+Per byte: permute the bits, take 8 LFSR output bits as a keystream byte (first bit out is the LSB), XOR the two. The bit shifted out of the register is the keystream bit, the register shifts along, and a new feedback bit enters at the start. Decryption XORs with the same keystream, then applies the inverse permutation.
+Side effect: the LFSR restarts from the same key for every file, so every file uses the same keystream. That is acceptable for the lab but not secure in practice.
+
+Recovered first draft
+I retrieved my original requirements draft from git (commit `6acd5c6`, the last version before the rewrite in `bcdad27`) and saved it as `requirements_v1.md`.
